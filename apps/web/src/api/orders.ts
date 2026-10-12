@@ -39,7 +39,13 @@ export async function listOrders(search: string, status: string, signal: AbortSi
   const query = new URLSearchParams();
   if (search) query.set('search', search);
   if (status) query.set('status', status);
-  const response = await fetch(`/api/orders?${query.toString()}`, { signal });
+  let response: Response;
+  try {
+    response = await fetch(`/api/orders?${query.toString()}`, { signal });
+  } catch (cause) {
+    if (signal.aborted) throw cause;
+    throw new Error(fallback, { cause });
+  }
   if (!response.ok) throw new Error(await errorMessage(response, fallback));
   let body: unknown;
   try { body = await response.json(); } catch { throw new Error(fallback); }
@@ -52,11 +58,16 @@ export async function listOrders(search: string, status: string, signal: AbortSi
 
 export async function updateStatus(id: string, status: OrderStatus): Promise<Order> {
   const fallback = 'Unable to update order. Please try again.';
-  const response = await fetch(`/api/orders/${encodeURIComponent(id)}/status`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status })
-  });
+  let response: Response;
+  try {
+    response = await fetch(`/api/orders/${encodeURIComponent(id)}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+  } catch (cause) {
+    throw new Error(fallback, { cause });
+  }
   if (!response.ok) throw new Error(await errorMessage(response, fallback));
   let body: unknown;
   try { body = await response.json(); } catch { throw new Error(fallback); }

@@ -53,3 +53,23 @@ await test('successful HTTP responses must contain the expected order shapes', a
   response = new Response('{"orders":[]}');
   assert.deepEqual(await listOrders('', '', new AbortController().signal), []);
 });
+
+await test('network rejections use operation-specific public messages', async (context) => {
+  context.mock.method(globalThis, 'fetch', () => Promise.reject(new TypeError('Internal browser transport error')));
+  await assert.rejects(listOrders('', '', new AbortController().signal), {
+    message: 'Unable to load orders. Please try again.'
+  });
+  await assert.rejects(updateStatus('ORD-1001', 'processing'), {
+    message: 'Unable to update order. Please try again.'
+  });
+});
+
+await test('an aborted listing preserves cancellation rather than converting it to a load error', async (context) => {
+  const controller = new AbortController();
+  const cancellation = new DOMException('The operation was aborted.', 'AbortError');
+  context.mock.method(globalThis, 'fetch', () => {
+    controller.abort();
+    return Promise.reject(cancellation);
+  });
+  await assert.rejects(listOrders('', '', controller.signal), (cause: unknown) => cause === cancellation);
+});

@@ -29,7 +29,8 @@ DTO declarations are small and local to each application boundary. Sharing a
 business-rule implementation with tests would compromise their independence;
 introducing schema code generation is unnecessary for this API's current size.
 The frontend validates the small order response shape locally and uses operation-specific
-fallback messages for invalid JSON, empty errors, or unexpected response bodies.
+fallback messages for invalid JSON, empty errors, unexpected response bodies, and
+network failures. Expected listing cancellation preserves its original rejection.
 
 The dependency set uses React 19, Vite 8, Fastify 5, and Playwright 1.64. TypeScript
 6.0.3 was selected within typescript-eslint 8.71.1's declared supported range
@@ -43,7 +44,8 @@ Fastify handles HTTP and JSON Schema validation. In-memory stores contain custom
 and orders; routes join customer data into order responses. A small transition map
 enforces business rules. The frontend displays server-confirmed updates and
 refetches the current filtered listing. AbortController prevents obsolete search
-responses from replacing the latest result.
+responses from replacing the latest result. Listing errors suppress invalid data;
+update errors use separate state so existing rows and controls remain usable.
 
 The API error handler converts schema errors, malformed JSON, business errors,
 and unknown routes into `{ code, message }` responses. Invalid schemas use 400,
@@ -100,14 +102,17 @@ concurrent independent suite invocations need distinct ports and are outside the
 
 The API project runs 23 scenarios once: nine transition scenarios, eleven query
 scenarios, two existing payload/missing-order scenarios, and one isolation scenario.
-The same two UI scenarios run independently in Chromium, Firefox, and WebKit.
+The same fourteen UI scenarios run independently in Chromium, Firefox, and WebKit:
+two real workflows and twelve network-resilience scenarios.
 `fullyParallel` is enabled with four local workers and two CI workers. Retries are
 zero everywhere. No special flaky-test classification policy is claimed.
 
 OrdersPage encapsulates navigation and repeated interactions; assertions stay in
 specifications. Locators use accessible roles/names plus a table-body scope for row
 selection. Synchronization uses Playwright locator assertions and auto-waiting.
-Playwright scenarios call real local HTTP routes; no `route.fulfill`, mocks, or arbitrary sleeps.
+API scenarios and ordinary UI workflows call real local HTTP routes. The focused
+network suite fulfills/aborts selected browser requests and uses direct real API
+reads to distinguish UI error handling from persisted backend state. No arbitrary sleeps.
 
 Phase 2A uses two focused specifications for transitions and order queries. Four
 parameterized tests check allowed status pairs, and four more group the twelve
@@ -131,11 +136,48 @@ shares a worker-level store. Related requests within one test verify state after
 each operation. The original pending transition, skipped transition, and combined
 query cases now live in these matrices without duplicate standalone tests.
 
-Four standalone regressions run through Node's built-in test runner using the existing
+Six standalone regressions run through Node's built-in test runner using the existing
 tsx dependency. One checks the test-support configuration with Fastify injection;
-three exercise frontend parsing with test-local synthetic fetch responses. These
-checks are separate from the 29 real-HTTP Playwright executions and do not need
+five exercise frontend parsing, network rejection messages, and preserved cancellation
+with test-local synthetic fetch responses. These
+checks are separate from the 65 Playwright executions and do not need
 running application servers or additional test frameworks.
+
+### Network interception and synchronization
+
+`tests/ui/network-resilience.spec.ts` owns every route, gate, and observation per
+test. URL predicates include the browser origin and exact listing pathname;
+PATCH interception includes the exact order/status URL. Handlers check HTTP methods.
+Namespace-management endpoints, individual real API reads, and assets are outside
+the route scope. Browser headers and direct API contexts retain the original
+typed namespace fixture and its checked cleanup attachment.
+
+Five listing cases cover 500 with the existing JSON contract, 503 HTML, malformed
+200 JSON, an invalid order mixed with a valid order, and transport abort. Assertions
+check exact public alerts, no table/partial results, intact interface, and no uncaught
+page errors. Removing the route and reloading restores real seeded rows.
+
+Five PATCH cases cover 503 JSON, the documented 409 / INVALID_TRANSITION contract,
+transport abort, malformed 200 JSON, and a structurally invalid 200 order. The 409
+simulates a stale client's conflict response; it does not create a real competing
+write or alter business rules. Every failed PATCH is fulfilled or aborted without
+`route.fetch`/`continue`. Tests check disabled controls while pending, enabled controls
+after failure, unchanged displayed status, and no success notice. Direct API GETs
+verify the target and entire store remain unchanged. Removing interception and
+clicking Update again performs a real PATCH, checked by a separate full-store read.
+Malformed mock successes are rejected; no mocked success is used as persistence evidence.
+
+Promise gates hold the initial listing and failed PATCH responses until assertions
+complete. Each test releases gates in `finally` and waits for route handlers during
+removal, including on failure. The race test captures a real pending-filter response
+using `route.fetch`, changes search, waits for the newer real response/rows, then
+releases the old response. A browser `requestfailed` event confirms cancellation;
+the latest rows and absence of an alert are checked after release. These are
+request/DOM barriers, with no wall-clock delays or application instrumentation.
+
+The suite verifies supported reload/refetch/update recovery, not client timeouts,
+automatic retries, offline behavior, server failure generation, or write conflicts.
+The application has no Retry button, automatic retry, or client-side timeout.
 
 The default reporter emits console and HTML results. Failed tests retain traces,
 failed browser tests capture screenshots, and all tests attach namespace-cleanup
@@ -158,6 +200,9 @@ Phase 1 established tooling, the fixture application, namespace-aware fixtures,
 representative tests, and CI/documentation. Phase 2A adds the independent transition
 matrix and selected query boundaries without application, fixture, dependency,
 or runner changes. The existing CI command discovers the new API specifications
-automatically. Future phases require review first; accessibility, visual testing,
-and network failure injection remain deferred. Other error routes, Unicode search
-semantics, and concurrent writes to the same order are not covered by this phase.
+automatically. Phase 2B adds focused browser failure injection and minimal fixes
+for transport messages and update-error visibility, without backend, fixture,
+dependency, runner, or CI changes. Existing UI project patterns discover the new
+specification automatically. Future phases require review first; accessibility and
+visual testing remain deferred. Other error routes, Unicode search semantics,
+and concurrent writes to the same order remain outside coverage.

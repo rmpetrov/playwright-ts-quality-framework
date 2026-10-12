@@ -44,10 +44,10 @@ store; restart the API to reset it. Stop development servers before running test
 | `npm run lint` | Type-aware ESLint; warnings fail the command |
 | `npm run build` | Emit backend JavaScript and build frontend assets |
 | `npm run test:api` | 23 API scenarios, including status transitions, query boundaries, and namespace isolation |
-| `npm run test:ui` | Two scenarios in each of Chromium, Firefox, and WebKit |
+| `npm run test:ui` | 14 scenarios in each of Chromium, Firefox, and WebKit |
 | `npm run test:isolation` | Focused namespace-isolation test |
-| `npm run test:regression` | Four standalone checks: test-support configuration and frontend response handling |
-| `npm test` | All 29 Playwright executions: 23 API and 6 UI |
+| `npm run test:regression` | Six standalone checks: test-support configuration, frontend responses, network failures, and cancellation |
+| `npm test` | All 65 Playwright executions: 23 API and 42 UI |
 | `npm run report` | Open the last HTML report |
 
 ## Architecture
@@ -58,7 +58,7 @@ store; restart the API to reset it. Stop development servers before running test
 - `tests/fixtures`: test-owned namespaces, API contexts, browser headers, and checked teardown.
 - `tests/data`: independently defined expected values and a deterministic order expectation factory.
 - `tests/pages`: one focused `OrdersPage`; assertions remain in specifications.
-- `tests/api`, `tests/ui`: real HTTP tests, with no response mocking or arbitrary sleeps.
+- `tests/api`: real HTTP business-rule tests; `tests/ui`: browser workflows and focused network interception, without arbitrary sleeps.
 - `tests/regression`: Node's test runner, isolated Fastify injection, and focused client response checks.
 - `docs`: [architecture and tradeoffs](docs/architecture.md), [actual verification](docs/verification.md).
 
@@ -140,6 +140,33 @@ npm run test:api -- --workers=4 --retries=0
 Run these commands sequentially because application ports are fixed. Namespace
 cleanup evidence is attached to each test's report.
 
+## Phase 2B UI resilience
+
+Twelve scenarios in `tests/ui/network-resilience.spec.ts` run in all three browsers:
+five listing failures (500 JSON error, 503 HTML, malformed JSON, invalid order
+shape, and network abort), five failed status updates (503, documented 409,
+network abort, malformed JSON, and invalid order shape), controlled listing
+loading, and cancellation of an obsolete filter request after a newer search.
+Exact alerts, valid rows, usable controls, and absence of false success are checked.
+Network errors use readable operation-specific messages; update errors retain the table.
+
+Interception targets browser `GET /api/orders` or `PATCH /api/orders/ORD-1001/status`
+only. Failed PATCH requests are fulfilled or aborted without forwarding them.
+Direct API reads bypass browser routes and verify the complete real namespace
+is unchanged. Listing recovery removes interception and reloads; update recovery
+removes interception and submits a real update, independently verified through
+the API. Promise gates control delays and release in `finally`; the race test
+holds a real older response until newer real results appear and checks cancellation.
+
+```sh
+npx playwright test tests/ui/network-resilience.spec.ts --project=chromium --project=firefox --project=webkit --workers=4 --retries=0 --repeat-each=3
+```
+
+Mocked responses establish frontend handling, not backend error generation or
+persistence. Network aborts simulate transport failure; these tests do not prove
+offline operation, client timeouts, automatic retries, or competing-write safety.
+The app has no Retry button or client-side timeout. Recovery uses its existing actions.
+
 ## CI and evidence
 
 `.github/workflows/quality.yml` runs clean installation, type checking, linting,
@@ -161,7 +188,7 @@ Only one test invocation can use the fixed ports at a time.
 Phase 2A covers the complete status-pair matrix and selected query boundaries;
 other error paths, Unicode search semantics, and competing same-order updates
 remain outside the automated coverage. The frontend checks order response shapes
-and uses readable fallbacks for invalid or empty bodies. See
+and uses readable fallbacks for invalid/empty bodies and network failures. See
 [verification](docs/verification.md) for dated local results and CI verification limits.
 
-Accessibility, visual regression, and network failure injection remain deferred.
+Accessibility and visual regression remain deferred.
