@@ -34,10 +34,10 @@ For interactive development, run `npm run dev` and open
 | `npm run typecheck` / `npm run lint` / `npm run build` | Strict types, zero-warning lint, compiled apps |
 | `npm run test:regression` | Six standalone configuration/client regressions |
 | `npm run test:api` | 23 real HTTP API scenarios |
-| `npm run test:ui` | 22 scenarios in each of Chromium, Firefox, and WebKit |
-| `npm run test:a11y` | Eight accessibility/keyboard scenarios in all three browsers |
+| `npm run test:ui` | 23 scenarios in each of Chromium, Firefox, and WebKit |
+| `npm run test:a11y` | Nine accessibility/keyboard scenarios in all three browsers |
 | `npm run test:isolation` | Focused namespace-isolation check |
-| `npm test` | All 89 Playwright executions: 23 API and 66 UI |
+| `npm test` | All 92 Playwright executions: 23 API and 69 UI |
 | `npm run report` | Open the latest HTML report |
 
 ## Engineering coverage
@@ -55,7 +55,8 @@ For interactive development, run `npm run dev` and open
   establish the intended UI state before every scan; no rules or elements are excluded.
 - **Keyboard:** search/filter, pending → processing and processing → shipped updates,
   real API persistence, forward/reverse focus, visible outlines, skipped disabled
-  buttons, terminal rows, and focus restoration after refetch. Native select
+  buttons, terminal rows, focus restoration after refetch, and preservation of
+  intentionally moved focus during an update. Native select
   type-ahead commits on blur; macOS WebKit uses Option+Tab to reach buttons.
 
 ## Accessibility scope

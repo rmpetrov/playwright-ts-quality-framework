@@ -23,12 +23,14 @@ This did not detect the two additional focused-audit findings below.
 ## Minimal fixes and regressions
 
 1. **Focus lost after a successful update.** The button becomes disabled and the
-   refetch unmounts the table. Keyboard users lose their current order position.
+   refetch may unmount the table. Keyboard users lose their current order position.
    The retained regression failed after a successful real pending → processing
    update and independent API read in Chromium and Firefox. App now records an
-   update initiated from the focused button and restores lost body focus after
+   update initiated from the focused button and restores focus after
    the listing settles: the same order's native selector when available, otherwise
-   Search orders. If the user already moved focus to another control, it is preserved.
+   Search orders. Restoration tracks the submitting element and fresh orders; a
+   fast refetch can retain a disabled button instead of moving focus to body.
+   Focusing another control cancels restoration from the start of PATCH.
    OrderRow adds only a stable native select ID. Both nonterminal and terminal
    keyboard workflows protect restoration and verify real persistence.
 2. **Weak control boundaries.** A computed-style regression failed in all three
@@ -44,7 +46,7 @@ This did not detect the two additional focused-audit findings below.
 Backend rules, seed data, existing assertions, fixture lifecycle, retries, and
 runner settings remain unchanged. No component library or application feature was added.
 
-## Eight scenarios
+## Nine scenarios
 
 | Scenario | Stable state / evidence |
 | --- | --- |
@@ -52,6 +54,7 @@ runner settings remain unchanged. No component library or application feature wa
 | Keyboard search/filter/empty | Tab to search, type Mia, Tab to filter and native p type-ahead, Shift+Tab to commit; only pending ORD-1006 remains. Replace search by keyboard; exact visible empty status and absent table. Scan both results and empty state. |
 | Keyboard pending → processing | Semantic focus checkpoints, native type-ahead/blur, enabled Update and Enter; exact success, refreshed processing row, no loading/error, independent full-order API read, restored selector focus and scan. |
 | Keyboard processing → shipped | Real API setup, same keyboard workflow; persisted terminal status, no actions, restored search focus and scan. |
+| Intentional focus move during PATCH | A promise holds the real PATCH; Shift+Tab moves to the filter while actions are disabled. Release, wait for the refreshed processing row and independent API persistence, then verify the filter retains visible focus. |
 | Forward/reverse focus | Each enabled native control in order; visible outline geometry and contrast; disabled buttons skipped/nonactivatable, terminal rows without controls, return to search without a trap. |
 | Held loading | Exact visible loading status and absent table while a test-local promise holds GET; scan, release, and wait for six real rows. Gate releases in finally. |
 | Listing error | One deterministic GET 500; exact visible alert, no stale loading/table, named usable filters and scan. |

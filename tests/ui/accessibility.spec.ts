@@ -95,57 +95,82 @@ test('keyboard search and filtering expose accessible results and an announced e
 });
 
 for (const transition of [
-  { from: 'pending', to: 'processing', key: 'p' },
-  { from: 'processing', to: 'shipped', key: 's' }
+  { from: 'pending', to: 'processing', key: 'p', moveFocus: false },
+  { from: 'processing', to: 'shipped', key: 's', moveFocus: false },
+  { from: 'pending', to: 'processing', key: 'p', moveFocus: true }
 ] as const) {
-  test(`keyboard ${transition.from} to ${transition.to} update announces success, persists, and restores focus`, async ({ page, ordersPage, request, browserName }, testInfo) => {
-    if (transition.from === 'processing') {
-      const setup = await request.patch('/api/orders/ORD-1001/status', { data: { status: 'processing' } });
-      expect(setup.status()).toBe(200);
-      expect(await setup.json()).toEqual(expectedOrder({ status: 'processing' }));
+  test(`keyboard ${transition.from} to ${transition.to} update announces success, persists, and ${transition.moveFocus ? 'preserves intentionally moved focus' : 'restores focus'}`, async ({ page, ordersPage, request, browserName }, testInfo) => {
+    let releasePatch!: () => void;
+    const heldPatch = new Promise<void>((resolve) => { releasePatch = resolve; });
+    if (transition.moveFocus) {
+      await page.route(patchURL, async (route) => {
+        if (route.request().method() !== 'PATCH') { await route.fallback(); return; }
+        await heldPatch;
+        await route.continue();
+      });
     }
-    await ordersPage.open();
-    const row = ordersPage.row('ORD-1001');
-    await expect(row.getByRole('cell', { name: transition.from, exact: true })).toBeVisible();
-    const selector = row.getByRole('combobox', { name: 'New status for ORD-1001', exact: true });
-    const button = row.getByRole('button', { name: 'Update ORD-1001', exact: true });
-    // Check each semantic neighbour; no blind page-wide Tab count or mouse actions.
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('searchbox', { name: 'Search orders', exact: true })).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(page.getByRole('combobox', { name: 'Status filter', exact: true })).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expectVisibleFocus(selector);
-    await expect(button).toBeDisabled();
-    await page.keyboard.press(transition.key);
-    await expect(selector).toHaveValue(transition.to);
-    // Blur to commit WebKit's native type-ahead before traversing enabled controls.
-    await page.keyboard.press('Shift+Tab');
-    await expect(page.getByRole('combobox', { name: 'Status filter', exact: true })).toBeFocused();
-    await expect(button).toBeEnabled();
-    await page.keyboard.press('Tab');
-    await expectVisibleFocus(selector);
-    // macOS WebKit uses Option+Tab to include buttons in native keyboard traversal.
-    await page.keyboard.press(browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab');
-    await expectVisibleFocus(button);
-    await page.keyboard.press('Enter');
-    const notice = `Updated ORD-1001 to ${transition.to}.`;
-    await expect(page.getByRole('status').filter({ hasText: notice })).toHaveText(notice);
-    await expect(row.getByRole('cell', { name: transition.to, exact: true })).toBeVisible();
-    await expect(page.getByRole('status').filter({ hasText: 'Loading orders…' })).toHaveCount(0);
-    await expect(page.getByRole('alert')).toHaveCount(0);
-    const persisted = await request.get('/api/orders/ORD-1001');
-    expect(persisted.status()).toBe(200);
-    expect(await persisted.json()).toEqual(expectedOrder({ status: transition.to }));
-    if (transition.to === 'shipped') {
-      await expect(row.getByRole('cell', { name: 'Final status', exact: true })).toBeVisible();
-      await expect(selector).toHaveCount(0);
-      await expect(button).toHaveCount(0);
-      await expectVisibleFocus(page.getByRole('searchbox', { name: 'Search orders', exact: true }));
-    } else {
+    try {
+      if (transition.from === 'processing') {
+        const setup = await request.patch('/api/orders/ORD-1001/status', { data: { status: 'processing' } });
+        expect(setup.status()).toBe(200);
+        expect(await setup.json()).toEqual(expectedOrder({ status: 'processing' }));
+      }
+      await ordersPage.open();
+      const row = ordersPage.row('ORD-1001');
+      await expect(row.getByRole('cell', { name: transition.from, exact: true })).toBeVisible();
+      const selector = row.getByRole('combobox', { name: 'New status for ORD-1001', exact: true });
+      const button = row.getByRole('button', { name: 'Update ORD-1001', exact: true });
+      // Check each semantic neighbour; no blind page-wide Tab count or mouse actions.
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('searchbox', { name: 'Search orders', exact: true })).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.getByRole('combobox', { name: 'Status filter', exact: true })).toBeFocused();
+      await page.keyboard.press('Tab');
       await expectVisibleFocus(selector);
+      await expect(button).toBeDisabled();
+      await page.keyboard.press(transition.key);
+      await expect(selector).toHaveValue(transition.to);
+      // Blur to commit WebKit's native type-ahead before traversing enabled controls.
+      await page.keyboard.press('Shift+Tab');
+      await expect(page.getByRole('combobox', { name: 'Status filter', exact: true })).toBeFocused();
+      await expect(button).toBeEnabled();
+      await page.keyboard.press('Tab');
+      await expectVisibleFocus(selector);
+      // macOS WebKit uses Option+Tab to include buttons in native keyboard traversal.
+      await page.keyboard.press(browserName === 'webkit' && process.platform === 'darwin' ? 'Alt+Tab' : 'Tab');
+      await expectVisibleFocus(button);
+      await page.keyboard.press('Enter');
+      const filter = page.getByRole('combobox', { name: 'Status filter', exact: true });
+      if (transition.moveFocus) {
+        await expect(button).toBeDisabled();
+        // While row actions are disabled, reverse navigation reaches the filter.
+        await page.keyboard.press('Shift+Tab');
+        await expectVisibleFocus(filter);
+        releasePatch();
+      }
+      const notice = `Updated ORD-1001 to ${transition.to}.`;
+      await expect(page.getByRole('status').filter({ hasText: notice })).toHaveText(notice);
+      await expect(row.getByRole('cell', { name: transition.to, exact: true })).toBeVisible();
+      await expect(page.getByRole('status').filter({ hasText: 'Loading orders…' })).toHaveCount(0);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      const persisted = await request.get('/api/orders/ORD-1001');
+      expect(persisted.status()).toBe(200);
+      expect(await persisted.json()).toEqual(expectedOrder({ status: transition.to }));
+      if (transition.moveFocus) {
+        await expectVisibleFocus(filter);
+      } else if (transition.to === 'shipped') {
+        await expect(row.getByRole('cell', { name: 'Final status', exact: true })).toBeVisible();
+        await expect(selector).toHaveCount(0);
+        await expect(button).toHaveCount(0);
+        await expectVisibleFocus(page.getByRole('searchbox', { name: 'Search orders', exact: true }));
+      } else {
+        await expectVisibleFocus(selector);
+      }
+      await expectAccessible(page, testInfo, `updated-${transition.to}`);
+    } finally {
+      releasePatch();
+      await page.unrouteAll({ behavior: 'wait' });
     }
-    await expectAccessible(page, testInfo, `updated-${transition.to}`);
   });
 }
 

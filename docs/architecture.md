@@ -102,8 +102,8 @@ concurrent independent suite invocations need distinct ports and are outside the
 
 The API project runs 23 scenarios once: nine transition scenarios, eleven query
 scenarios, two existing payload/missing-order scenarios, and one isolation scenario.
-The same twenty-two UI scenarios run independently in Chromium, Firefox, and WebKit:
-two original workflows, twelve network-resilience scenarios, and eight accessibility/
+The same twenty-three UI scenarios run independently in Chromium, Firefox, and WebKit:
+two original workflows, twelve network-resilience scenarios, and nine accessibility/
 keyboard scenarios.
 `fullyParallel` is enabled with four local workers and two CI workers. Retries are
 zero everywhere. No special flaky-test classification policy is claimed.
@@ -141,7 +141,7 @@ Six standalone regressions run through Node's built-in test runner using the exi
 tsx dependency. One checks the test-support configuration with Fastify injection;
 five exercise frontend parsing, network rejection messages, and preserved cancellation
 with test-local synthetic fetch responses. These
-checks are separate from the 89 Playwright executions and do not need
+checks are separate from the 92 Playwright executions and do not need
 running application servers or additional test frameworks.
 
 ### Network interception and synchronization
@@ -195,8 +195,10 @@ select type-ahead is committed on blur; macOS WebKit uses Option+Tab for buttons
 Real API reads independently verify nonterminal and terminal updates. Focus tests
 check forward/reverse movement, skipped disabled controls, visible outline geometry,
 and solid-color contrast. The loaded-state test also protects input/select boundaries.
-Successful refetch now restores lost focus to the updated order's selector, falling
-back to search when the order has no action; existing user focus is preserved.
+Successful refetch restores focus to the updated order's selector, falling back
+to search when the order has no action. Restoration waits for fresh rows or a
+listing error and handles both retained and replaced DOM controls. A focus move
+away from the submitting control cancels restoration, including during PATCH.
 
 These checks add accessibility assertions to representative error states while
 Phase 2B retains the complete recovery/real-store matrix. No second resilience
