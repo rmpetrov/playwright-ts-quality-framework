@@ -1,5 +1,14 @@
 # Verification record
 
+For the current merged baseline and this documentation milestone, start with the
+[portfolio presentation checkpoint](#portfolio-presentation-checkpoint--october-12-2026).
+The current inventory is 92 Playwright executions plus six standalone regressions;
+see the [test guide](testing.md#coverage-inventory).
+
+Earlier sections preserve evidence at the time of each checkpoint. Statements about
+uncommitted work, smaller scenario counts, ephemeral local artifacts, or pending CI
+apply to those dated runs; the latest section records subsequent merge/hosted results.
+
 ## Historical Phase 1 checkpoint — October 11, 2026
 
 This section preserves the original local verification using Node 22.22.0,
@@ -778,3 +787,76 @@ Changed: apps/web/src/App.tsx, tests/ui/accessibility.spec.ts, README.md,
 docs/accessibility.md, docs/architecture.md, and this verification record.
 Recommended commit: `fix: preserve update focus across retained and replaced order rows`.
 Local verification passed; original Linux CI resolution remains pending a new run.
+
+## Portfolio presentation checkpoint — October 12, 2026
+
+### Merged baseline and hosted CI
+
+The working tree was clean before work. The GitHub PR metadata confirmed
+[Phase 2C / PR #4](https://github.com/rmpetrov/playwright-ts-quality-framework/pull/4)
+was merged to main. After git fetch origin main, origin/main was
+`8ac3a7581aaec21a2e0ba4d8fd7b9e1d999f8b3a`; git merge-base --is-ancestor confirmed
+the merge commit was included. Branch feat/portfolio-presentation was created
+from that fetched ref.
+
+The GitHub API confirmed the
+[Quality run on the merged main commit](https://github.com/rmpetrov/playwright-ts-quality-framework/actions/runs/38277073602)
+completed successfully. Its
+[quality job](https://github.com/rmpetrov/playwright-ts-quality-framework/actions/runs/38277073602/job/114905045096)
+reports success for install, typecheck, lint, build, standalone regressions, Linux
+browser installation, the combined API/UI/accessibility gate, and evidence upload.
+This subsequent hosted result supersedes the pending-CI status in the PR #4
+follow-up above; its original failure diagnosis and local results remain historical
+evidence. No hosted run of this uncommitted documentation branch is claimed.
+
+### Documentation scope
+
+README now opens with technical positioning and six engineering highlights, then
+links the architecture and four source examples before setup/CI detail. The
+[architecture](architecture.md#runtime-and-test-paths) replaces plain text with a
+Mermaid flowchart and maps every diagram element to source. The
+[test guide](testing.md) collects scenario-level reasoning, assertions, limitations,
+coverage counts, request synchronization, and focused commands previously spread
+across README/architecture. The accessibility audit and historical checkpoints remain.
+
+Current counts are 23 API scenarios, 23 UI scenarios per browser (two workflows,
+twelve resilience, nine accessibility/keyboard), and 92 Playwright executions.
+Six standalone Node regressions are separate. Application code, assertions,
+fixtures, configuration, dependencies, and lockfile were not changed.
+
+### Actual local verification
+
+Host: macOS ARM64, Node 22.22.0, npm 10.9.4. Commands ran against the merged
+implementation on the presentation branch; both full suites ran sequentially.
+
+| Check | Result |
+| --- | --- |
+| `npm ci` | Passed; 239 packages installed from the unchanged lockfile |
+| `npx playwright install chromium firefox webkit` | Passed; matching cached browsers available |
+| `npm run typecheck` | Passed for all four TypeScript configurations |
+| `npm run lint` | Passed with zero warnings |
+| `npm run build` | Passed; compiled API and built frontend |
+| `npm run test:regression` | Six passed; no failures, skips, or cancellations |
+| `npm run test` | 92 passed; API 23 + Chromium 23 + Firefox 23 + WebKit 23; four workers, zero retries; 31.8 seconds |
+| `npm test` | 92 passed; same four projects, four workers, zero retries; 42.5 seconds |
+| Local Markdown links and heading anchors | Passed; 65 targets across README and four docs |
+| Mermaid syntax/render review | Passed in Mermaid Live Editor 12.1.0; nine nodes, two groups; every label/path checked against source |
+| `git diff --check` | Passed |
+
+The initial sandboxed npm run test could not bind 127.0.0.1:3001 (EPERM) and did
+not execute tests. The successful runs above used approved execution outside that
+sandbox. The sandboxed browser-install command produced no result and was
+interrupted; the approved invocation then completed successfully. These environment
+restrictions did not require implementation changes.
+
+The diagram uses basic flowchart/subgraph/edge syntax in a
+[GitHub-supported fenced Mermaid block](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams).
+No external image, badge, or diagram service URL is needed to read it on GitHub.
+Local links/anchors and code fences were checked across all five Markdown documents;
+all historical verification text was compared with origin/main and retained verbatim.
+The latest local HTML report records passed status with no failed test IDs.
+
+No documentation blocker was identified. Historical /private/tmp artifacts remain
+ephemeral and are labelled as such; manual accessibility assessment and the existing
+coverage limitations remain explicit. Work is left uncommitted for review; no push
+or pull request was created.

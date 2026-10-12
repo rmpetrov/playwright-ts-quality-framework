@@ -1,20 +1,65 @@
 # Architecture decisions
 
-## Purpose and boundaries
+The automation framework is the primary deliverable. The local Order Management
+Console provides controlled browser and HTTP behavior without external accounts or
+services. See the [README](../README.md) for a short review path and
+[test documentation](testing.md) for scenario-level evidence.
 
-The automation framework is the primary deliverable. The Order Management Console
-provides controlled browser and HTTP behavior without external accounts or services.
-This project is a learning/portfolio artifact; it makes no production-use claims.
+## Runtime and test paths
 
-```text
-UI specifications → OrdersPage → isolated browser context
-                                   ↓ x-test-namespace
-                            Vite /api proxy
-                                   ↓ same header
-API specifications → APIRequestContext → Fastify /api → owned namespace store
+```mermaid
+flowchart TB
+  subgraph tests["Playwright Test"]
+    fixtures["Typed test fixtures<br/>UUID namespace ownership"]
+    ui["Browser projects<br/>Chromium / Firefox / WebKit"]
+    api["API project / UI state checks<br/>APIRequestContext"]
+    intercept["Optional browser interception<br/>resilience tests"]
+    fixtures -->|browser header| ui
+    fixtures -->|API header| api
+    ui -.->|page.route| intercept
+  end
 
-Typed namespace fixture → Fastify /__test → create/delete fresh seeded store
+  subgraph application["Local Order Management Console"]
+    web["React frontend<br/>Vite preview :5173"]
+    proxy["Vite /api proxy"]
+    backend["Fastify API :3001<br/>/api/orders routes"]
+    support["Test-support routes<br/>/__test/namespaces"]
+    stores["Per-namespace in-memory stores<br/>fresh customers and orders"]
+    web -->|browser fetch| proxy
+    proxy -->|same header| backend
+    backend -->|select namespace| stores
+    support -->|seed / delete| stores
+  end
+
+  ui -->|OrdersPage / keys| web
+  intercept -.->|fulfill / abort| web
+  api -->|direct HTTP validation| backend
+  fixtures -->|POST / DELETE| support
+  fixtures -->|teardown GET: 404| backend
 ```
+
+Solid arrows show fixture setup and real execution/HTTP/store paths. Dotted arrows
+show optional browser interception. The normal browser fetch path
+passes through Vite; a page.route handler can replace or abort a selected response
+locally, or forward/fetch it through that same proxy. Direct APIRequestContext
+calls go to port 3001 and bypass both page.route and Vite.
+
+Test-support routes require `NODE_ENV=test` and `ENABLE_TEST_SUPPORT=true`.
+Management calls create/delete namespaces; teardown's separate scoped GET verifies
+that the deleted store is inaccessible. Stores persist only within the running
+Fastify process. The diagram shows test mode; normal development uses a default
+store and does not register lifecycle routes.
+
+| Diagram element | Source of truth |
+| --- | --- |
+| Runner, projects, server readiness and shutdown | [playwright.config.ts](../playwright.config.ts) |
+| Typed ownership, headers, direct API context, checked teardown | [tests/fixtures/test.ts](../tests/fixtures/test.ts) |
+| Browser interactions | [OrdersPage](../tests/pages/orders.page.ts), [keyboard tests](../tests/ui/accessibility.spec.ts) |
+| React requests and response validation | [App](../apps/web/src/App.tsx), [orders client](../apps/web/src/api/orders.ts) |
+| Vite development/preview proxy | [vite.config.ts](../vite.config.ts) |
+| Fastify route/store resolution | [app.ts](../apps/api/src/app.ts), [order routes](../apps/api/src/orders/routes.ts) |
+| Test-support lifecycle and fresh stores | [namespace routes](../apps/api/src/test-support/namespaces.ts), [startup guard](../apps/api/src/test-support/config.ts), [seed factory](../apps/api/src/store/seed.ts) |
+| Optional fulfilled/aborted/forwarded browser requests | [network resilience tests](../tests/ui/network-resilience.spec.ts) |
 
 ## One package, explicit separation
 
@@ -100,139 +145,36 @@ concurrent independent suite invocations need distinct ports and are outside the
 
 ## Test layers and diagnostics
 
-The API project runs 23 scenarios once: nine transition scenarios, eleven query
-scenarios, two existing payload/missing-order scenarios, and one isolation scenario.
-The same twenty-three UI scenarios run independently in Chromium, Firefox, and WebKit:
-two original workflows, twelve network-resilience scenarios, and nine accessibility/
-keyboard scenarios.
-`fullyParallel` is enabled with four local workers and two CI workers. Retries are
-zero everywhere. No special flaky-test classification policy is claimed.
+The [test guide](testing.md) owns the coverage inventory and implementation detail:
+23 API scenarios and 23 UI scenarios per browser produce 92 Playwright executions.
+Six standalone Node regressions run separately. Each test uses independently owned
+expected data and namespaces; no worker-level mutable store or global reset is used.
 
-OrdersPage encapsulates navigation and repeated interactions; assertions stay in
-specifications. Locators use accessible roles/names plus a table-body scope for row
-selection. Synchronization uses Playwright locator assertions and auto-waiting.
-API scenarios and ordinary UI workflows call real local HTTP routes. The focused
-network suite fulfills/aborts selected browser requests and uses direct real API
-reads to distinguish UI error handling from persisted backend state. No arbitrary sleeps.
+API scenarios and ordinary UI workflows call real local HTTP routes. Browser
+resilience tests intercept selected requests, then read Fastify directly to
+separate frontend error handling from actual store state. Accessibility checks
+combine selected axe rules with keyboard/focus assertions; the
+[accessibility audit](accessibility.md) defines automated scope and manual gaps.
 
-Phase 2A uses two focused specifications for transitions and order queries. Four
-parameterized tests check allowed status pairs, and four more group the twelve
-rejected pairs by starting status. A ninth scenario checks fulfilment through
-pending → processing → shipped and terminal rejection after real HTTP mutations.
-The cases list expected outcomes explicitly, independently of the application's
-transition map. Test-owned data describes all six full seeded order responses.
-Successful transitions are confirmed by a separate GET and a full listing;
-each rejected operation confirms both the target and full store remain unchanged.
+The default reporter emits console and HTML results. Failed tests retain traces;
+failed browser tests capture screenshots. Tests attach checked namespace cleanup,
+and accessibility scans attach compact violations/incomplete checks. Playwright
+starts/stops the compiled API and Vite preview using readiness URLs. Existing
+servers are not reused, avoiding a manual server with stale code or disabled
+test support. Build is required before application tests.
 
-Query cases check case-insensitive search, trimming, combined/status-only filters,
-and empty results against explicit ordered response arrays. They repeat successful
-queries to verify deterministic responses. A boundary test checks 99, 100, and 101
-decoded search characters, including that validation precedes trimming. Negative
-query tests send unsupported statuses, unknown parameters, and repeated keys that
-express arrays through HTTP; they assert the exact 400 error contract and unchanged
-seed contents. They avoid expectations about parser implementation details.
+## CI and delivery boundaries
 
-Each generated test uses the existing test-scoped namespace fixture; no matrix
-shares a worker-level store. Related requests within one test verify state after
-each operation. The original pending transition, skipped transition, and combined
-query cases now live in these matrices without duplicate standalone tests.
+The [Quality workflow](../.github/workflows/quality.yml) uses the pinned Node baseline,
+clean install, typecheck, zero-warning ESLint, build, six standalone regressions,
+and matching browsers with Linux dependencies. One npm test invocation discovers
+all API/UI/accessibility scenarios. It runs with two CI workers, full parallelism,
+and zero retries; local runs use four workers. Evidence uploads contain HTML
+reports, cleanup/axe attachments, failure traces, and screenshots, retained for
+seven days when the job is not cancelled.
 
-Six standalone regressions run through Node's built-in test runner using the existing
-tsx dependency. One checks the test-support configuration with Fastify injection;
-five exercise frontend parsing, network rejection messages, and preserved cancellation
-with test-local synthetic fetch responses. These
-checks are separate from the 92 Playwright executions and do not need
-running application servers or additional test frameworks.
-
-### Network interception and synchronization
-
-`tests/ui/network-resilience.spec.ts` owns every route, gate, and observation per
-test. URL predicates include the browser origin and exact listing pathname;
-PATCH interception includes the exact order/status URL. Handlers check HTTP methods.
-Namespace-management endpoints, individual real API reads, and assets are outside
-the route scope. Browser headers and direct API contexts retain the original
-typed namespace fixture and its checked cleanup attachment.
-
-Five listing cases cover 500 with the existing JSON contract, 503 HTML, malformed
-200 JSON, an invalid order mixed with a valid order, and transport abort. Assertions
-check exact public alerts, no table/partial results, intact interface, and no uncaught
-page errors. Removing the route and reloading restores real seeded rows.
-
-Five PATCH cases cover 503 JSON, the documented 409 / INVALID_TRANSITION contract,
-transport abort, malformed 200 JSON, and a structurally invalid 200 order. The 409
-simulates a stale client's conflict response; it does not create a real competing
-write or alter business rules. Every failed PATCH is fulfilled or aborted without
-`route.fetch`/`continue`. Tests check disabled controls while pending, enabled controls
-after failure, unchanged displayed status, and no success notice. Direct API GETs
-verify the target and entire store remain unchanged. Removing interception and
-clicking Update again performs a real PATCH, checked by a separate full-store read.
-Malformed mock successes are rejected; no mocked success is used as persistence evidence.
-
-Promise gates hold the initial listing and failed PATCH responses until assertions
-complete. Each test releases gates in `finally` and waits for route handlers during
-removal, including on failure. The race test captures a real pending-filter response
-using `route.fetch`, changes search, waits for the newer real response/rows, then
-releases the old response. A browser `requestfailed` event confirms cancellation;
-the latest rows and absence of an alert are checked after release. These are
-request/DOM barriers, with no wall-clock delays or application instrumentation.
-
-The suite verifies supported reload/refetch/update recovery, not client timeouts,
-automatic retries, offline behavior, server failure generation, or write conflicts.
-The application has no Retry button, automatic retry, or client-side timeout.
-
-### Accessibility and keyboard checks
-
-`tests/ui/accessibility.spec.ts` uses the existing typed fixtures and UI projects.
-It scans explicit loaded, filtered, empty, controlled-loading, success/terminal,
-listing-error, and PATCH-error states. A small helper uses a fresh full-page
-`@axe-core/playwright` 4.13.0 builder with supported WCAG 2.0/2.1 A/AA and 2.2 AA
-tags, asserts zero violations, and attaches compact violations/incomplete checks.
-No scan exclusion or disabled rule is used. The installed 2.2 AA rule is target-size;
-automated rules cover only a subset of WCAG.
-
-Keyboard workflows use actual key events and semantic focus checkpoints. Native
-select type-ahead is committed on blur; macOS WebKit uses Option+Tab for buttons.
-Real API reads independently verify nonterminal and terminal updates. Focus tests
-check forward/reverse movement, skipped disabled controls, visible outline geometry,
-and solid-color contrast. The loaded-state test also protects input/select boundaries.
-Successful refetch restores focus to the updated order's selector, falling back
-to search when the order has no action. Restoration waits for fresh rows or a
-listing error and handles both retained and replaced DOM controls. A focus move
-away from the submitting control cancels restoration, including during PATCH.
-
-These checks add accessibility assertions to representative error states while
-Phase 2B retains the complete recovery/real-store matrix. No second resilience
-matrix, framework, shared route state, or worker-level fixture was introduced.
-Live-region semantics do not prove screen-reader announcements. The
-[accessibility audit](accessibility.md) documents findings, scope, and manual checks.
-
-The default reporter emits console and HTML results. Failed tests retain traces,
-failed browser tests capture screenshots, and all tests attach namespace-cleanup
-evidence. The loopback servers are started/stopped by Playwright with readiness
-URLs. Existing servers are not reused, preventing accidental testing of a manual
-server lacking test support or stale code. Build is required before application tests.
-
-## CI and incremental delivery
-
-One GitHub Actions job uses the pinned Node baseline, `npm ci`, type checking,
-ESLint, build, and matching Playwright browsers with Linux dependencies. It runs
-the standalone regressions and Playwright suite and uploads evidence on completion or failure. There is no sharding,
-deployment, database service, secret configuration, or remote repository requirement.
-The workflow uses these actions; their maintainers document usage here:
-[checkout](https://github.com/actions/checkout),
-[setup-node](https://github.com/actions/setup-node), and
-[upload-artifact](https://github.com/actions/upload-artifact).
-
-Phase 1 established tooling, the fixture application, namespace-aware fixtures,
-representative tests, and CI/documentation. Phase 2A adds the independent transition
-matrix and selected query boundaries without application, fixture, dependency,
-or runner changes. The existing CI command discovers the new API specifications
-automatically. Phase 2B adds focused browser failure injection and minimal fixes
-for transport messages and update-error visibility, without backend, fixture,
-dependency, runner, or CI changes. Existing UI project patterns discover the new
-specification automatically. Phase 2C adds axe/keyboard checks, focused contrast
-and refetch-focus fixes, and a local test:a11y command. The single CI npm test step
-discovers these checks through the existing UI patterns and fails on violations.
-This completes the planned engineering milestones; further work requires review.
-Visual regression remains deferred. Other error routes, Unicode search semantics,
-and concurrent writes to the same order remain outside coverage.
+There is no sharding, deployment, database service, or runtime secret configuration.
+Visual regression, other error routes, Unicode search semantics, and concurrent
+writes to the same order remain outside coverage. The
+[verification record](verification.md) preserves incremental delivery history,
+actual local and hosted-CI results, and the limits of each checkpoint.
