@@ -1,15 +1,55 @@
-# playwright-ts-quality-framework
+# Playwright TypeScript Quality Framework
 
-A Senior SDET portfolio showcase in TypeScript and Playwright: real HTTP contracts,
-parallel-safe fixtures, cross-browser workflows, deterministic network failure
-injection, keyboard interactions, and an enforced accessibility quality gate.
-The small Order Management Console is a local test fixture, not a production app
-or a claim of professional project experience.
+A Senior SDET portfolio demonstrating independent API contracts, parallel-safe test
+data, cross-browser resilience, and accessibility gates against a local Order
+Management Console. The React/Fastify app provides controlled behavior to test;
+this is a portfolio artifact with no production-use or professional-experience claims.
 
-## Run locally
+## Engineering highlights
 
-Use Node **22.22.0** (`nvm use`, if available) and npm. Runtime needs no credentials
-or external services; initial dependency/browser downloads need network access.
+- **Parallel-safe ownership:** typed fixtures create UUID namespaces, carry the same
+  header through browser and API contexts, and verify deletion even after test failure.
+- **Independent API expectations:** all 16 order-status pairs are explicit test data;
+  separate HTTP reads verify accepted changes and unchanged state after rejection.
+- **Resilience with backend evidence:** 12 browser scenarios inject HTTP, payload,
+  and transport failures, control loading/races, and verify recovery against Fastify.
+- **Accessibility and keyboard gates:** nine scenarios per browser combine selected
+  axe rules with real key events, visible focus, contrast, and focus restoration.
+- **Cross-browser execution:** 23 API scenarios plus 23 UI scenarios in each of
+  Chromium, Firefox, and WebKit produce 92 Playwright executions; retries are zero.
+- **Reviewable diagnostics:** HTML reports, failure traces/screenshots, axe findings,
+  and checked namespace-cleanup attachments accompany the CI quality gate.
+
+## Architecture at a glance
+
+Browser tests drive React served by Vite; browser `/api` requests reach Fastify
+through Vite's proxy. Direct API checks bypass the browser and proxy. Both paths
+select the same in-memory namespace, owned and deleted by a test-scoped fixture.
+See the [Mermaid architecture diagram and source map](docs/architecture.md#runtime-and-test-paths).
+
+## Four featured scenarios
+
+| Source | Engineering challenge and evidence | Meaningful limit |
+| --- | --- | --- |
+| [Parallel namespace isolation](tests/api/namespace-isolation.spec.ts) | Two independently owned stores start with identical data. A real PATCH changes A to processing while independent GETs confirm B remains pending; the owning fixture verifies both deletions. | This scenario mutates stores sequentially; parallel suite runs provide separate execution evidence. It does not test competing writes to one order. |
+| [Complete order-status transitions](tests/api/order-transitions.spec.ts) | Test-owned expectations cover four allowed and twelve rejected status pairs. Real PATCH/GET/list checks verify accepted state, exact 409 contracts, unchanged stores after rejection, and terminal behavior after fulfilment. | Complete for the four implemented statuses; storage remains in memory. |
+| [Network failure and real backend verification](tests/ui/network-resilience.spec.ts) | A parameterized update scenario fulfills or aborts PATCH without forwarding it, checks usable error state, and independently reads the unchanged real store. Removing interception allows a real update, verified by a full-store GET. | Injected responses prove frontend handling, not backend error generation; reload/update recovery does not establish automatic retries or offline support. |
+| [Accessibility and keyboard quality gates](tests/ui/accessibility.spec.ts) | Keyboard update cases verify native control traversal, real API state, restored focus or preserved intentional focus, and a full-page axe scan after the asserted UI state. Loaded, filtered, empty, loading, and error states extend the gate. | Selected automated rules and focus checks do not establish full WCAG compliance or screen-reader announcements. |
+
+Read the [scenario guide and coverage inventory](docs/testing.md) for exact test
+names, synchronization, assertions, and execution commands.
+
+## Technology stack
+
+TypeScript 6, Playwright Test 1.64, React 19, Vite 8, Fastify 5,
+`@axe-core/playwright` 4.13, ESLint, and GitHub Actions. Standalone regressions use
+Node's test runner through tsx. One npm package and lockfile pin direct dependencies;
+Node **22.22.0** is the local/CI baseline ([package](package.json), [.nvmrc](.nvmrc)).
+
+## Quick start
+
+Use Node 22.22.0 (`nvm use`, if available) and npm. No credentials or external runtime
+services are needed; initial package/browser downloads need network access.
 
 ```sh
 npm ci
@@ -21,94 +61,48 @@ npm run test:regression
 npm test
 ```
 
-On Linux, install browser dependencies with
-`npx playwright install --with-deps chromium firefox webkit`.
-Tests start built Fastify and Vite preview servers on `127.0.0.1:3001` and
-`127.0.0.1:5173`, then stop them. Build after application changes, keep both ports
-free, and run test commands sequentially. Existing servers are not reused.
-For interactive development, run `npm run dev` and open
-[the local console](http://127.0.0.1:5173); restart the API to reset its default store.
+These commands were verified locally on macOS; the
+[dated verification record](docs/verification.md#portfolio-presentation-checkpoint--october-12-2026)
+records results. On Linux, use `npx playwright install --with-deps chromium firefox webkit`,
+as the [quality workflow](.github/workflows/quality.yml) does.
 
-| Command | Purpose |
-| --- | --- |
-| `npm run typecheck` / `npm run lint` / `npm run build` | Strict types, zero-warning lint, compiled apps |
-| `npm run test:regression` | Six standalone configuration/client regressions |
-| `npm run test:api` | 23 real HTTP API scenarios |
-| `npm run test:ui` | 23 scenarios in each of Chromium, Firefox, and WebKit |
-| `npm run test:a11y` | Nine accessibility/keyboard scenarios in all three browsers |
-| `npm run test:isolation` | Focused namespace-isolation check |
-| `npm test` | All 92 Playwright executions: 23 API and 69 UI |
-| `npm run report` | Open the latest HTML report |
+Tests start the compiled API and Vite preview on `127.0.0.1:3001` and
+`127.0.0.1:5173`, then stop them. Keep both ports free, build after application
+changes, and run suites sequentially; existing servers are not reused.
+For focused runs and interactive development, see [test commands](docs/testing.md#running-the-tests).
 
-## Engineering coverage
+## CI and reporting
 
-- **Independent API expectations:** all four allowed and twelve rejected status
-  transitions, persisted state, query combinations, invalid inputs, and boundaries.
-- **Owned test data:** typed fixtures create fresh UUID namespaces, send the same
-  header through browser/Vite and direct API contexts, and verify DELETE 204 then
-  scoped GET 404 during teardown. Cleanup evidence is attached even after failures.
-- **Browser resilience:** twelve scenarios cover listing/update HTTP errors, invalid
-  responses, network aborts, controlled loading, recovery, and obsolete requests.
-  Failed mocked PATCH requests never reach the store; real reads verify state.
-- **Accessibility:** full-page axe scans cover loaded, filtered, empty, loading,
-  successful update/terminal, listing-error, and update-error states. Assertions
-  establish the intended UI state before every scan; no rules or elements are excluded.
-- **Keyboard:** search/filter, pending → processing and processing → shipped updates,
-  real API persistence, forward/reverse focus, visible outlines, skipped disabled
-  buttons, terminal rows, focus restoration after refetch, and preservation of
-  intentionally moved focus during an update. Native select
-  type-ahead commits on blur; macOS WebKit uses Option+Tab to reach buttons.
+The [Quality workflow](.github/workflows/quality.yml) runs on main pushes and pull
+requests: clean install, typecheck, zero-warning lint, build, six standalone
+regressions, Linux browser installation, and one `npm test` invocation. API,
+resilience, and accessibility checks share that gate. It uses two CI workers
+(four locally), full parallelism, and zero retries.
 
-## Accessibility scope
+Console and HTML reports include namespace-cleanup and axe attachments. Failures
+retain traces and browser screenshots. CI uploads `playwright-report/` and
+`test-results/` as `playwright-evidence` for seven days when the job is not cancelled.
+Run `npm run report` to open the latest local HTML report.
 
-`@axe-core/playwright` **4.13.0** uses locked axe-core **4.13.0** with tags `wcag2a`,
-`wcag2aa`, `wcag21a`, `wcag21aa`, and `wcag22aa`. The installed WCAG 2.2 AA rule is
-`target-size`; these tags select supported automated rules, not every WCAG criterion.
-Small computed-style checks also protect this fixture's solid-color control
-boundaries (3:1) and visible focus outlines. Status/alert roles expose meaningful
-loading, empty, success, and error messages. Scan attachments contain compact
-violations and incomplete checks, with rule IDs, impact, targets, and explanations.
+[Hosted and local verification evidence](docs/verification.md) distinguishes
+successful runs from historical failures and records their scope.
 
-```sh
-npm run build
-npm run test:a11y
-npm run test:a11y -- --workers=4 --retries=0 --repeat-each=3
-```
+## Detailed documentation
 
-Automated scans and live-region semantics do **not** prove complete WCAG compliance,
-certification, or screen-reader announcement behavior. Manual checks should cover
-VoiceOver/Safari and NVDA/Firefox or Chromium, announcement timing, table navigation,
-zoom/reflow, text spacing, forced colors, native menus, and focus visibility at
-narrow viewports. See the [audit and manual checklist](docs/accessibility.md).
+- [Architecture, source paths, namespace lifecycle, and tradeoffs](docs/architecture.md)
+- [Test scenarios, coverage counts, synchronization, and commands](docs/testing.md)
+- [Accessibility audit, automated rule scope, and manual checklist](docs/accessibility.md)
+- [Dated verification evidence and historical checkpoints](docs/verification.md)
 
-## Architecture and CI
+## Honest limitations
 
-One npm package and lockfile contain Fastify (`apps/api`), React/Vite (`apps/web`),
-typed fixtures/page object (`tests/fixtures`, `tests/pages`), independent data,
-API/UI specifications, and Node regressions. The UI stays deliberately small:
-search, status filtering, a semantic order table, and native status-update controls.
-Search matches ID/customer case-insensitively and combines with status; the backend
-allows pending → processing/cancelled and processing → shipped/cancelled.
-Shipped/cancelled orders are terminal.
+Stores are in memory and reset on API restart. Authentication, durable databases,
+pagination, payments, and deployment are outside this fixture. Namespace IDs provide
+test isolation, not a security boundary; test-support routes are enabled only in test mode.
+Abrupt termination can skip teardown, and independent suite invocations share fixed ports.
 
-Test-support routes require both `NODE_ENV=test` and `ENABLE_TEST_SUPPORT=true`;
-normal startup exposes none. Namespace IDs isolate tests and are not authentication.
-Read [architecture and tradeoffs](docs/architecture.md) for contracts and ownership.
-
-The GitHub Actions quality job runs `npm ci`, type checking, lint, build, standalone
-regressions, matching browser installation, and **one `npm test` invocation**.
-The existing UI project patterns discover accessibility tests automatically;
-any selected axe violation or keyboard assertion failure fails that same gate.
-Parallel execution uses four local/two CI workers with **zero retries**. HTML reports,
-namespace cleanup, failure traces, and screenshots are uploaded by CI.
-Dated execution evidence and local/hosted-CI distinctions live in
-[verification](docs/verification.md).
-
-## Boundaries
-
-Data is in memory; restart clears it. No authentication, database, pagination,
-payments, or deployment is included. Abrupt termination can skip teardown, and
-only one test invocation can occupy the fixed ports. Other error routes, Unicode
-search semantics, and competing writes remain outside coverage. Network interception
-proves frontend handling, not backend error generation, offline operation, or
-automatic retries. Visual regression and unrelated framework extensions are deferred.
+Network interception does not prove server failure generation, automatic retries,
+offline behavior, or write-conflict handling. Selected automated accessibility
+checks require complementary manual assistive-technology, zoom/reflow, and
+forced-colors assessment. Visual regression, other error routes, Unicode search
+semantics, and competing writes remain outside coverage.
