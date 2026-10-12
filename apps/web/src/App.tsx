@@ -9,6 +9,7 @@ export function App() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [updateError, setUpdateError] = useState('');
   const [notice, setNotice] = useState('');
   const [updating, setUpdating] = useState(false);
   const [refresh, setRefresh] = useState(0);
@@ -17,6 +18,7 @@ export function App() {
     const controller = new AbortController();
     setLoading(true);
     setError('');
+    setUpdateError('');
     void listOrders(search, status, controller.signal).then((items) => {
       if (!controller.signal.aborted) setOrders(items);
     }).catch((cause: unknown) => {
@@ -29,14 +31,14 @@ export function App() {
 
   async function changeStatus(id: string, next: OrderStatus): Promise<void> {
     setUpdating(true);
-    setError('');
+    setUpdateError('');
     setNotice('');
     try {
       const updated = await updateStatus(id, next);
       setNotice(`Updated ${updated.id} to ${updated.status}.`);
       setRefresh((value) => value + 1);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Unable to update order.');
+      setUpdateError(cause instanceof Error ? cause.message : 'Unable to update order.');
     } finally {
       setUpdating(false);
     }
@@ -63,7 +65,7 @@ export function App() {
           </select>
         </label>
       </section>
-      {error && <p role="alert">{error}</p>}
+      {(error || updateError) && <p role="alert">{error || updateError}</p>}
       {notice && <p role="status" className="notice">{notice}</p>}
       {loading ? <p role="status">Loading orders…</p> : !error && (
         orders.length === 0 ? <p role="status">No orders match your filters.</p> : (

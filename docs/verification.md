@@ -321,3 +321,173 @@ of a missing order or unknown application routes), Unicode search semantics,
 and competing writes to the same order remain untested in this phase. In-memory
 storage, fixed ports, and abrupt-termination cleanup limitations remain.
 Accessibility, visual regression, and network failure injection are deferred.
+
+## Phase 2B checkpoint — October 12, 2026
+
+Local verification used Node 22.22.0, npm 10.9.4, and macOS ARM64. The working
+tree was clean on `feat/advanced-api-coverage` before fetching `origin/main` and
+creating the requested `feat/ui-failure-testing` branch from merged Phase 2A
+commit `5ea2189`. Changes remain uncommitted; no push, merge, or PR was created.
+
+### Existing behavior and coverage gaps
+
+The client already handled non-2xx JSON errors, unusable error bodies, malformed
+success JSON, and invalid order shapes. The screen already had alert, loading,
+and empty states, and used AbortController to ignore obsolete listing results.
+There was no Retry button, client timeout, or automatic retry. The two existing
+UI specifications covered only successful filtering/empty results and a successful
+update with real persistence. Three standalone client regressions exercised
+response parsing but did not verify browser error states, transport failures,
+usable controls, delayed loading, cancellation, or recovery.
+
+### Reproduced defects and minimal fixes
+
+1. **Browser transport errors leaked into alerts.** Expected: an operation-specific,
+   readable error with supported reload/update recovery. Actual: Chromium displayed
+   `Failed to fetch`. Reproduction: route the browser's exact GET `/api/orders` to
+   `route.abort('failed')`, open the screen, and inspect its alert (the equivalent
+   PATCH also bypassed normalization). Root cause: fetch rejections occurred before
+   response validation and propagated their native message directly to App.
+   Fix: catch transport rejections and use the existing load/update fallback,
+   retaining the cause for diagnostics. An aborted listing preserves its original
+   cancellation. Both browser network cases and two standalone regressions cover
+   normalization and cancellation.
+2. **A rejected update removed all rows and controls.** Expected: the previous
+   persisted status remains visible and controls become usable after failure.
+   Actual: a mocked 503 displayed its alert but removed the order table.
+   Reproduction: load the real seed, intercept PATCH `/api/orders/ORD-1001/status`
+   with 503 JSON, select processing, click Update, and inspect the pending row.
+   Root cause: listing and update errors shared the state guarding table rendering
+   (`!error`). Fix: separate update-error state while using the existing alert;
+   clear it on a supported refetch or new update. All five failed-update cases
+   check the original status, re-enabled controls, and successful real resubmission.
+
+Before the fixes, the focused Chromium run had exactly **two expected assertion
+failures**, one for each defect. Both namespace cleanup attachments confirmed
+deletion, with no teardown errors. Assertions were retained when implementing fixes.
+No backend, component redesign, business-rule, fixture, runner, dependency, or
+CI change was needed.
+
+### Delivered network scenarios
+
+Twelve new cases in `tests/ui/network-resilience.spec.ts` run in all three browsers:
+
+- Five GET failures: 500 with the existing JSON error contract; 503 HTML;
+  malformed 200 JSON; a 200 list mixing a valid order and an invalid customer
+  shape; transport failure. Exact visible alerts exclude internal errors, no
+  partial table appears, and removing interception/reloading restores real rows.
+- Five PATCH failures: 503 JSON; documented 409 / INVALID_TRANSITION; transport
+  failure; malformed 200 JSON; invalid 200 order shape. Controls are disabled
+  while held and enabled after rejection; the pending status remains visible
+  and no success notice appears. Real direct API reads verify both the full target
+  and full store are unchanged. Removing interception and clicking the existing
+  Update button performs a real update with independently confirmed persistence.
+- Controlled initial listing: a promise holds the GET before forwarding it;
+  loading is visible until release, then real rows appear.
+- Obsolete request: a pending-filter GET captures a real response via `route.fetch`.
+  Search changes to ORD-1002 while that older response is held. The newer real
+  response renders first; releasing the old response cannot replace it. The
+  browser's requestfailed event confirms cancellation and no alert appears.
+
+Routes match the exact browser origin/path and intended HTTP method. Failed PATCH
+handlers never forward requests. Namespace-management endpoints, assets, and
+APIRequestContext reads are outside interception. All gates are test-local,
+released in `finally`, and drained with `unrouteAll({ behavior: 'wait' })`.
+Tests use request events and locator assertions without sleeps or application hooks.
+
+### Executed checks
+
+| Command/check | Actual result |
+| --- | --- |
+| `npm ci` | Passed; 237 packages installed from the existing lockfile |
+| `npm run typecheck` | Passed for API, frontend, tests, and tooling |
+| `npm run lint` | Passed with zero warnings |
+| `npm run build` | Passed; emitted backend and built frontend |
+| `npm run test:regression` | 6 passed, 0 failed or skipped |
+| New network suite, all three browsers | 36 passed; 4 workers, 0 retries; 15.79 seconds |
+| New network suite, `--workers=4 --retries=0 --repeat-each=3` | 108 passed; 37.78 seconds |
+| `npm run test:api -- --reporter=list,html,json` | 23 passed; 4 workers, 0 retries; 1.67 seconds |
+| `npm run test:ui -- --reporter=list,html,json` | 42 passed; 4 workers, 0 retries; 15.18 seconds |
+| `CI=true npm test -- --reporter=list,html,json` | 65 passed; 2 workers, 0 retries; 18.72 seconds |
+| JSON result/cleanup inspection | Passed; no retries, skips, failures, flaky outcomes, or cleanup errors in post-fix runs |
+| `git diff --check` | Passed |
+
+| Browser | New suite | New suite repeated three times | Complete UI suite | UI within combined CI-settings run |
+| --- | --- | --- | --- | --- |
+| Chromium | 12 passed | 36 passed | 14 passed | 14 passed |
+| Firefox | 12 passed | 36 passed | 14 passed | 14 passed |
+| WebKit | 12 passed | 36 passed | 14 passed | 14 passed |
+
+JSON evidence was requested alongside the existing list/HTML reporters:
+
+```sh
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2b-network.json npx playwright test tests/ui/network-resilience.spec.ts --project=chromium --project=firefox --project=webkit --reporter=list,html,json
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2b-network-repeat.json npx playwright test tests/ui/network-resilience.spec.ts --project=chromium --project=firefox --project=webkit --workers=4 --retries=0 --repeat-each=3 --reporter=list,html,json
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2b-api.json npm run test:api -- --reporter=list,html,json
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2b-ui.json npm run test:ui -- --reporter=list,html,json
+CI=true PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2b-full-ci.json npm test -- --reporter=list,html,json
+```
+
+These `/private/tmp` files are ephemeral local evidence, not shipped repository
+files. `npm run report` opens the final combined HTML report. Matching browser
+binaries were already installed; all three executed without a download.
+The unchanged workflow discovers the new file through each UI project's existing
+`ui/**/*.spec.ts` pattern and retains failure traces/screenshots and cleanup evidence.
+
+### Determinism, isolation, and backend-state evidence
+
+All post-fix reports showed `fullyParallel: true`, zero configured retries in
+every project, and exactly one successful attempt with retry index zero for each
+execution. There were no skipped or flaky outcomes. Actual parallel-slot indices
+covered all four slots in the default/repeated runs and both slots in the combined
+CI-settings run. Each new scenario executed three times per browser in the repeated
+run, with fresh namespaces and no shared route state or timing sleeps.
+
+| Run | Successful executions | Unique namespaces confirmed deleted |
+| --- | --- | --- |
+| New network suite | 36 | 36 |
+| New network suite repeated three times | 108 | 108 |
+| Complete API suite | 23 | 24 |
+| Complete UI suite | 42 | 42 |
+| Combined CI-settings suite | 65 | 66 |
+| Total | 274 | 276 |
+
+Every execution contained a namespace-cleanup attachment. All namespace IDs were
+unique within and across these five runs; each entry had `deleted: true` with no
+error. The unchanged fixture checks DELETE 204 and a subsequent real scoped GET
+404 / NAMESPACE_NOT_FOUND before recording deletion. The extra namespaces belong
+to the API isolation scenario. Both intentionally failing pre-fix reproductions
+also cleaned up their two namespaces successfully.
+
+Every network scenario checks the complete real store against independent seed
+expectations. Each failed PATCH checks the target separately before recovery;
+only the subsequent unmocked user update changes ORD-1001 to processing, with
+all other orders still unchanged. Browser namespace headers are checked at route
+capture, while real reads go directly to Fastify using the same test's namespace.
+The existing two-namespace isolation scenario and original browser persistence
+workflow also passed. No fixture, page object, or API business-rule test changed.
+
+The sandbox initially blocked loopback server binding and tsx's IPC socket with
+EPERM. These commands were rerun with approved permissions. After the two defects
+were fixed, no functional test failures occurred. An initial new-test header type
+error and a caught-error lint requirement were corrected without relaxing checks.
+Color-environment warnings were non-fatal. No dependency or lockfile changed.
+
+### Verification scope and limitations
+
+Mocked HTTP errors prove frontend handling, not that Fastify generates those
+failures. The mocked 409 represents a stale-client business-error contract; it
+does not exercise actual competing writes. An aborted request simulates transport
+failure, not an OS-level offline condition. Invalid mocked success responses
+prove validation and lack of false success, not backend persistence. Real reads
+and the subsequent real PATCH are the persistence evidence.
+
+The app has no client timeout, automatic retry, or Retry button, so no such
+guarantees are claimed. Recovery uses existing reload, search/refetch, and Update
+actions. GitHub-hosted Linux CI was not executed; local CI settings are checked
+separately. Existing in-memory, fixed-port, and abrupt-termination limitations
+remain. Phase 2C, accessibility testing, and visual regression were not started.
+
+Changed: `apps/web/src/App.tsx`, `apps/web/src/api/orders.ts`,
+`tests/regression/orders-client.test.ts`, `README.md`, `docs/architecture.md`,
+and `docs/verification.md`. Added: `tests/ui/network-resilience.spec.ts`.
