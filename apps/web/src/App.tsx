@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listOrders, updateStatus } from './api/orders.js';
 import type { Order, OrderStatus } from './api/orders.js';
 import { OrderRow } from './components/OrderRow.js';
@@ -13,6 +13,8 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [updating, setUpdating] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const updatedFocus = useRef<{ id: string; trigger: Element; previousOrders: Order[] } | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,7 +31,22 @@ export function App() {
     return () => { controller.abort(); };
   }, [search, status, refresh]);
 
+  useEffect(() => {
+    const pending = updatedFocus.current;
+    if (loading || updating || !pending || (orders === pending.previousOrders && !error)) return;
+    // A fast refetch can retain the table and its now-disabled submitting button.
+    // Restore after fresh rows render, whether the original control survived or not.
+    const active = document.activeElement;
+    if (!active || active === document.body || active === document.documentElement || active === pending.trigger) {
+      (document.getElementById(`new-status-${pending.id}`) ?? searchInput.current)?.focus();
+    }
+    updatedFocus.current = null;
+  }, [error, loading, orders, updating]);
+
   async function changeStatus(id: string, next: OrderStatus): Promise<void> {
+    const trigger = document.activeElement;
+    updatedFocus.current = trigger?.getAttribute('aria-label') === `Update ${id}`
+      ? { id, trigger, previousOrders: orders } : null;
     setUpdating(true);
     setUpdateError('');
     setNotice('');
@@ -38,6 +55,7 @@ export function App() {
       setNotice(`Updated ${updated.id} to ${updated.status}.`);
       setRefresh((value) => value + 1);
     } catch (cause) {
+      updatedFocus.current = null;
       setUpdateError(cause instanceof Error ? cause.message : 'Unable to update order.');
     } finally {
       setUpdating(false);
@@ -45,7 +63,10 @@ export function App() {
   }
 
   return (
-    <main>
+    <main onFocusCapture={(event) => {
+      // Intentional navigation cancels restoration, including while PATCH is held.
+      if (updatedFocus.current && event.target !== updatedFocus.current.trigger) updatedFocus.current = null;
+    }}>
       <header>
         <p className="eyebrow">LOCAL TEST FIXTURE</p>
         <h1>Order Management Console</h1>
@@ -53,7 +74,7 @@ export function App() {
       </header>
       <section aria-label="Order filters" className="filters">
         <label>Search orders
-          <input type="search" value={search} placeholder="Order ID or customer name" onChange={(event) => { setSearch(event.target.value); }} />
+          <input ref={searchInput} type="search" value={search} placeholder="Order ID or customer name" onChange={(event) => { setSearch(event.target.value); }} />
         </label>
         <label>Status filter
           <select value={status} onChange={(event) => { setStatus(event.target.value); }}>

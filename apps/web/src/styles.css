@@ -7,7 +7,7 @@ h1 { margin: 8px 0; font-size: 2rem; }
 .muted, footer { color: #596b76; }
 .filters { display: flex; flex-wrap: wrap; gap: 24px; padding: 24px 0; }
 label { display: grid; gap: 8px; font-size: .9rem; font-weight: 600; }
-input, select, button { font: inherit; border: 1px solid #b5c5ca; border-radius: 6px; padding: 10px 12px; background: white; }
+input, select, button { font: inherit; border: 1px solid #738a96; border-radius: 6px; padding: 10px 12px; background: white; }
 input { min-width: 300px; }
 button { background: #136b64; color: white; border-color: #136b64; cursor: pointer; }
 button:disabled { background: #e2e8eb; color: #596b76; border-color: #c5d0d5; cursor: default; }

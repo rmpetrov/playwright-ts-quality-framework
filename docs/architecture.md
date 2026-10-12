@@ -102,8 +102,9 @@ concurrent independent suite invocations need distinct ports and are outside the
 
 The API project runs 23 scenarios once: nine transition scenarios, eleven query
 scenarios, two existing payload/missing-order scenarios, and one isolation scenario.
-The same fourteen UI scenarios run independently in Chromium, Firefox, and WebKit:
-two real workflows and twelve network-resilience scenarios.
+The same twenty-three UI scenarios run independently in Chromium, Firefox, and WebKit:
+two original workflows, twelve network-resilience scenarios, and nine accessibility/
+keyboard scenarios.
 `fullyParallel` is enabled with four local workers and two CI workers. Retries are
 zero everywhere. No special flaky-test classification policy is claimed.
 
@@ -140,7 +141,7 @@ Six standalone regressions run through Node's built-in test runner using the exi
 tsx dependency. One checks the test-support configuration with Fastify injection;
 five exercise frontend parsing, network rejection messages, and preserved cancellation
 with test-local synthetic fetch responses. These
-checks are separate from the 65 Playwright executions and do not need
+checks are separate from the 92 Playwright executions and do not need
 running application servers or additional test frameworks.
 
 ### Network interception and synchronization
@@ -179,6 +180,32 @@ The suite verifies supported reload/refetch/update recovery, not client timeouts
 automatic retries, offline behavior, server failure generation, or write conflicts.
 The application has no Retry button, automatic retry, or client-side timeout.
 
+### Accessibility and keyboard checks
+
+`tests/ui/accessibility.spec.ts` uses the existing typed fixtures and UI projects.
+It scans explicit loaded, filtered, empty, controlled-loading, success/terminal,
+listing-error, and PATCH-error states. A small helper uses a fresh full-page
+`@axe-core/playwright` 4.13.0 builder with supported WCAG 2.0/2.1 A/AA and 2.2 AA
+tags, asserts zero violations, and attaches compact violations/incomplete checks.
+No scan exclusion or disabled rule is used. The installed 2.2 AA rule is target-size;
+automated rules cover only a subset of WCAG.
+
+Keyboard workflows use actual key events and semantic focus checkpoints. Native
+select type-ahead is committed on blur; macOS WebKit uses Option+Tab for buttons.
+Real API reads independently verify nonterminal and terminal updates. Focus tests
+check forward/reverse movement, skipped disabled controls, visible outline geometry,
+and solid-color contrast. The loaded-state test also protects input/select boundaries.
+Successful refetch restores focus to the updated order's selector, falling back
+to search when the order has no action. Restoration waits for fresh rows or a
+listing error and handles both retained and replaced DOM controls. A focus move
+away from the submitting control cancels restoration, including during PATCH.
+
+These checks add accessibility assertions to representative error states while
+Phase 2B retains the complete recovery/real-store matrix. No second resilience
+matrix, framework, shared route state, or worker-level fixture was introduced.
+Live-region semantics do not prove screen-reader announcements. The
+[accessibility audit](accessibility.md) documents findings, scope, and manual checks.
+
 The default reporter emits console and HTML results. Failed tests retain traces,
 failed browser tests capture screenshots, and all tests attach namespace-cleanup
 evidence. The loopback servers are started/stopped by Playwright with readiness
@@ -203,6 +230,9 @@ or runner changes. The existing CI command discovers the new API specifications
 automatically. Phase 2B adds focused browser failure injection and minimal fixes
 for transport messages and update-error visibility, without backend, fixture,
 dependency, runner, or CI changes. Existing UI project patterns discover the new
-specification automatically. Future phases require review first; accessibility and
-visual testing remain deferred. Other error routes, Unicode search semantics,
+specification automatically. Phase 2C adds axe/keyboard checks, focused contrast
+and refetch-focus fixes, and a local test:a11y command. The single CI npm test step
+discovers these checks through the existing UI patterns and fails on violations.
+This completes the planned engineering milestones; further work requires review.
+Visual regression remains deferred. Other error routes, Unicode search semantics,
 and concurrent writes to the same order remain outside coverage.
