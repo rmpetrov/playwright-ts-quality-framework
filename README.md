@@ -43,11 +43,11 @@ store; restart the API to reset it. Stop development servers before running test
 | `npm run typecheck` | Strict checking for backend, frontend, tests, and configuration |
 | `npm run lint` | Type-aware ESLint; warnings fail the command |
 | `npm run build` | Emit backend JavaScript and build frontend assets |
-| `npm run test:api` | Five API scenarios plus one namespace-isolation test |
+| `npm run test:api` | 23 API scenarios, including status transitions, query boundaries, and namespace isolation |
 | `npm run test:ui` | Two scenarios in each of Chromium, Firefox, and WebKit |
 | `npm run test:isolation` | Focused namespace-isolation test |
 | `npm run test:regression` | Four standalone checks: test-support configuration and frontend response handling |
-| `npm test` | All 12 Playwright project/scenario executions |
+| `npm test` | All 29 Playwright executions: 23 API and 6 UI |
 | `npm run report` | Open the last HTML report |
 
 ## Architecture
@@ -89,7 +89,10 @@ bind to loopback. Namespace IDs provide test isolation, not authentication.
 | `PATCH /api/orders/:id/status` | 200, updated order; body `{ "status": "processing" }` |
 
 Search matches order ID or customer name case-insensitively; surrounding whitespace
-is trimmed. Search and status filters combine. Results preserve seed order.
+is trimmed. The decoded search value accepts at most **100 characters before
+trimming**. Search and status filters combine. Results preserve seed order.
+Only `search` and `status` query parameters are accepted. Status must be one of
+the four values below; repeated search/status parameters are rejected as arrays.
 Totals use integer cents; dates are fixed ISO timestamps. Customer data appears
 within order responses; there is no customer-management screen.
 
@@ -102,6 +105,40 @@ invalid schemas return **400 / VALIDATION_ERROR**, malformed JSON returns
 **400 / BAD_REQUEST**, missing orders return **404 / ORDER_NOT_FOUND**, and
 prohibited transitions return **409 / INVALID_TRANSITION**. Unknown routes return
 **404 / ROUTE_NOT_FOUND**. Additional request fields and type coercion are rejected.
+Schema failures use the exact message `Request validation failed.`; transition
+failures use `Cannot change status from <current> to <requested>.`.
+
+## Phase 2A coverage
+
+The transition specification explicitly lists all four allowed status pairs and
+all twelve rejected pairs, grouped by starting status. It checks complete PATCH
+responses, independent GET persistence, and unchanged unrelated orders. Rejected
+updates cover terminal states, same-status requests, skipping processing, and
+moving processing back to pending; each checks the exact 409 contract and the
+unchanged order/listing. A separate workflow follows pending → processing → shipped
+through HTTP and verifies that all further updates are rejected.
+
+Query tests cover case-insensitive ID/customer search, surrounding whitespace,
+combined and status-only filters, and empty results. Successful queries are repeated
+to check deterministic contents and ordering. Boundary checks accept 99/100-character
+searches and reject 101 characters before trimming. Negative cases check unsupported
+statuses, unknown parameters, and repeated search/status keys, with exact 400 errors
+and an unchanged full listing. Expectations live in test data; tests do not import
+application seed data or transition rules.
+
+Every parameterized test receives its own namespace through the existing typed
+fixture. Related rejected requests within a test share only that test's store and
+check its contents after each request. Full parallel execution and zero retries
+remain enabled. To run the extended API suite repeatedly with four workers:
+
+```sh
+npm run build
+npm run test:api -- --workers=4 --retries=0
+npm run test:api -- --workers=4 --retries=0
+```
+
+Run these commands sequentially because application ports are fixed. Namespace
+cleanup evidence is attached to each test's report.
 
 ## CI and evidence
 
@@ -121,11 +158,10 @@ database, pagination, payments, or deployment. Abruptly killing the test process
 can prevent teardown; restarting its disposable backend clears remaining namespaces.
 Only one test invocation can use the fixed ports at a time.
 
-The MVP covers representative scenarios, not every business-rule combination or
-error path. The frontend checks order response shapes and uses readable fallbacks
-for invalid or empty bodies. See [verification](docs/verification.md) for dated
-local results and CI verification limits.
+Phase 2A covers the complete status-pair matrix and selected query boundaries;
+other error paths, Unicode search semantics, and competing same-order updates
+remain outside the automated coverage. The frontend checks order response shapes
+and uses readable fallbacks for invalid or empty bodies. See
+[verification](docs/verification.md) for dated local results and CI verification limits.
 
-Recommended next milestone, after review: a small transition/boundary coverage
-matrix, keeping independent expected values and checked data isolation. Accessibility,
-visual regression, and network failure injection remain deferred.
+Accessibility, visual regression, and network failure injection remain deferred.
