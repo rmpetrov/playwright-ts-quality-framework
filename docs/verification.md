@@ -217,3 +217,107 @@ GitHub-hosted Linux CI was not executed at this checkpoint. Existing in-memory
 storage, fixed-port, and abrupt-termination limitations remain. Frontend checks
 validate the small response shape; exhaustive business semantics and every
 transition/input boundary remain outside the MVP.
+
+## Phase 2A checkpoint — October 12, 2026
+
+Local verification used Node 22.22.0, npm 10.9.4, and macOS ARM64. The working
+tree was clean before fetching `origin/main` and creating
+`feat/advanced-api-coverage` from merged MVP commit `7e2e0e8`. All Phase 2A changes
+remain uncommitted on that branch. No push, merge, or pull request was created.
+
+### Coverage changes
+
+The initial API project had six tests. Only pending → processing and pending →
+shipped rejection were covered from the sixteen possible status pairs. Search
+coverage was one combined pending/customer query; query validation and length
+boundaries had no permanent Playwright scenarios.
+
+The expanded API project has **23 tests**, a net addition of **17**. Three original
+scenarios moved into the new matrices instead of being duplicated.
+
+- Nine transition tests cover four allowed pairs, twelve rejected pairs grouped
+  by starting status, and a pending → processing → shipped workflow. Assertions
+  check complete responses, exact 409 contracts, independent GET persistence,
+  and unchanged orders after rejection, including all terminal updates.
+- Eleven query tests cover ID/customer case-insensitivity, surrounding whitespace,
+  combined filters, every status-only filter, both kinds of empty results, the
+  99/100/101-character boundary before trimming, and invalid queries. Invalid
+  cases include unsupported/uppercase/empty status values, an unknown parameter,
+  and repeated search/status keys expressed through HTTP. Assertions check exact
+  400 contracts, deterministic ordered contents, and an unchanged full store.
+- Existing invalid payload, unknown-order read, and two-namespace isolation
+  coverage remains. All expected responses are test-owned; no application rules
+  or seed data are imported. Application code and the demo's scope are unchanged.
+
+### Executed checks
+
+| Command | Actual result |
+| --- | --- |
+| `npm ci` | Passed; 237 packages installed from the existing lockfile |
+| `npm run typecheck` | Passed for API, frontend, tests, and tooling |
+| `npm run lint` | Passed with zero warnings |
+| `npm run build` | Passed; compiled backend and built frontend |
+| `npm run test:regression` | 4 passed, 0 failed or skipped |
+| `npm run test:api -- --reporter=list,html,json` | 23 passed; 4 workers, 0 retries; 2.91 seconds |
+| `npm run test:api -- --workers=4 --retries=0 --repeat-each=3 --reporter=list,html,json` | 69 passed; 4 workers, 0 retries; 4.69 seconds |
+| `CI=true npm test -- --reporter=list,html,json` | 29 passed: API 23, Chromium 2, Firefox 2, WebKit 2; 2 workers, 0 retries; 9.91 seconds |
+| JSON result/cleanup inspection | Passed; one successful attempt per execution, no skips/failures/flaky results, all namespaces unique and deleted |
+| `git diff --check` | Passed |
+
+JSON reports were requested with the following local commands:
+
+```sh
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2a-api-default.json npm run test:api -- --reporter=list,html,json
+PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2a-api-repeat.json npm run test:api -- --workers=4 --retries=0 --repeat-each=3 --reporter=list,html,json
+CI=true PLAYWRIGHT_JSON_OUTPUT_FILE=/private/tmp/phase2a-full-ci.json npm test -- --reporter=list,html,json
+```
+
+These report paths are ephemeral local evidence, not files shipped with the
+repository. The final HTML report is available through `npm run report`.
+The combined run used local CI settings; **GitHub-hosted Linux CI was not run**
+for Phase 2A. Matching browser binaries were already installed and all three
+browsers executed successfully; no browser download was needed at this checkpoint.
+
+### Parallel execution and isolation evidence
+
+All three JSON reports showed `fullyParallel: true`, zero configured retries in
+every project, and exactly one passed result with retry index zero per execution.
+Actual parallel-slot indices covered all four slots in each API run and both
+slots in the combined run. The repeated run exercised every API test three times
+with fresh namespaces and had no failing, skipped, or flaky outcomes.
+
+Every execution had a namespace-cleanup attachment:
+
+| Run | Executions | Unique namespaces confirmed deleted |
+| --- | --- | --- |
+| API default | 23 | 24 |
+| API repeated three times | 69 | 72 |
+| Combined suite | 29 | 30 |
+| Total | 121 | 126 |
+
+Namespace IDs were also unique across all three runs. Each isolation execution
+owned two namespaces; every other execution owned one. All cleanup entries had
+`deleted: true` and no errors. The unchanged fixture verifies DELETE 204 followed
+by GET 404 / NAMESPACE_NOT_FOUND before recording successful cleanup. The existing
+isolation test and each browser's UI-update/direct-API-read check passed.
+
+### Execution limitations and remaining gaps
+
+The initial sandboxed regression command could not create tsx's IPC socket
+(`EPERM`). The initial sandboxed API run could not bind the loopback API port
+(`EPERM`). Both commands were rerun with approved permissions and passed;
+subsequent HTTP/browser runs used approved permissions. There were no functional
+test failures and no application defects requiring correction. Color-environment
+warnings were non-fatal.
+
+Changed files: `tests/data/orders.ts`, `tests/api/orders.spec.ts`, `README.md`,
+`docs/architecture.md`, and `docs/verification.md`. Added:
+`tests/api/order-transitions.spec.ts` and `tests/api/order-queries.spec.ts`.
+Fixtures, runner configuration, CI workflow, dependencies, lockfile, and all
+application files remain unchanged.
+
+The complete status-pair matrix is covered, but other error paths (such as PATCH
+of a missing order or unknown application routes), Unicode search semantics,
+and competing writes to the same order remain untested in this phase. In-memory
+storage, fixed ports, and abrupt-termination cleanup limitations remain.
+Accessibility, visual regression, and network failure injection are deferred.

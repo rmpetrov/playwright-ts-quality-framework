@@ -4,7 +4,7 @@
 
 The automation framework is the primary deliverable. The Order Management Console
 provides controlled browser and HTTP behavior without external accounts or services.
-This MVP is a learning/portfolio artifact; it makes no production-use claims.
+This project is a learning/portfolio artifact; it makes no production-use claims.
 
 ```text
 UI specifications → OrdersPage → isolated browser context
@@ -98,7 +98,8 @@ concurrent independent suite invocations need distinct ports and are outside the
 
 ## Test layers and diagnostics
 
-The API project runs five representative scenarios and one isolation scenario once.
+The API project runs 23 scenarios once: nine transition scenarios, eleven query
+scenarios, two existing payload/missing-order scenarios, and one isolation scenario.
 The same two UI scenarios run independently in Chromium, Firefox, and WebKit.
 `fullyParallel` is enabled with four local workers and two CI workers. Retries are
 zero everywhere. No special flaky-test classification policy is claimed.
@@ -108,10 +109,32 @@ specifications. Locators use accessible roles/names plus a table-body scope for 
 selection. Synchronization uses Playwright locator assertions and auto-waiting.
 Playwright scenarios call real local HTTP routes; no `route.fulfill`, mocks, or arbitrary sleeps.
 
+Phase 2A uses two focused specifications for transitions and order queries. Four
+parameterized tests check allowed status pairs, and four more group the twelve
+rejected pairs by starting status. A ninth scenario checks fulfilment through
+pending → processing → shipped and terminal rejection after real HTTP mutations.
+The cases list expected outcomes explicitly, independently of the application's
+transition map. Test-owned data describes all six full seeded order responses.
+Successful transitions are confirmed by a separate GET and a full listing;
+each rejected operation confirms both the target and full store remain unchanged.
+
+Query cases check case-insensitive search, trimming, combined/status-only filters,
+and empty results against explicit ordered response arrays. They repeat successful
+queries to verify deterministic responses. A boundary test checks 99, 100, and 101
+decoded search characters, including that validation precedes trimming. Negative
+query tests send unsupported statuses, unknown parameters, and repeated keys that
+express arrays through HTTP; they assert the exact 400 error contract and unchanged
+seed contents. They avoid expectations about parser implementation details.
+
+Each generated test uses the existing test-scoped namespace fixture; no matrix
+shares a worker-level store. Related requests within one test verify state after
+each operation. The original pending transition, skipped transition, and combined
+query cases now live in these matrices without duplicate standalone tests.
+
 Four standalone regressions run through Node's built-in test runner using the existing
 tsx dependency. One checks the test-support configuration with Fastify injection;
 three exercise frontend parsing with test-local synthetic fetch responses. These
-checks are separate from the 12 real-HTTP Playwright executions and do not need
+checks are separate from the 29 real-HTTP Playwright executions and do not need
 running application servers or additional test frameworks.
 
 The default reporter emits console and HTML results. Failed tests retain traces,
@@ -131,8 +154,10 @@ The workflow uses these actions; their maintainers document usage here:
 [setup-node](https://github.com/actions/setup-node), and
 [upload-artifact](https://github.com/actions/upload-artifact).
 
-Phase 1 includes tooling, the fixture application, namespace-aware fixtures,
-representative tests, local verification, and CI/documentation. Future work needs
-review first. The recommended next step is a small independent transition and
-input-boundary test matrix; accessibility, visual testing, and network failure
-injection remain planned extensions.
+Phase 1 established tooling, the fixture application, namespace-aware fixtures,
+representative tests, and CI/documentation. Phase 2A adds the independent transition
+matrix and selected query boundaries without application, fixture, dependency,
+or runner changes. The existing CI command discovers the new API specifications
+automatically. Future phases require review first; accessibility, visual testing,
+and network failure injection remain deferred. Other error routes, Unicode search
+semantics, and concurrent writes to the same order are not covered by this phase.
