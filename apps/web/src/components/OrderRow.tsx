@@ -22,6 +22,7 @@ export function OrderRow({ order, onUpdate, updating }: {
         {available.length === 0 ? <span className="muted">Final status</span> : (
           <div className="status-controls">
             <select
+              id={`new-status-${order.id}`}
               aria-label={`New status for ${order.id}`}
               value={available.includes(selected as OrderStatus) ? selected : ''}
               disabled={updating}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listOrders, updateStatus } from './api/orders.js';
 import type { Order, OrderStatus } from './api/orders.js';
 import { OrderRow } from './components/OrderRow.js';
@@ -13,6 +13,8 @@ export function App() {
   const [notice, setNotice] = useState('');
   const [updating, setUpdating] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const searchInput = useRef<HTMLInputElement>(null);
+  const updatedFocus = useRef<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -29,12 +31,24 @@ export function App() {
     return () => { controller.abort(); };
   }, [search, status, refresh]);
 
+  useEffect(() => {
+    if (loading || !updatedFocus.current) return;
+    // Refetching replaces the table. Restore the lost position without taking
+    // focus from a user who has already moved to another control.
+    if (document.activeElement === document.body) {
+      (document.getElementById(`new-status-${updatedFocus.current}`) ?? searchInput.current)?.focus();
+    }
+    updatedFocus.current = null;
+  }, [loading, orders]);
+
   async function changeStatus(id: string, next: OrderStatus): Promise<void> {
+    const restoreFocus = document.activeElement?.getAttribute('aria-label') === `Update ${id}`;
     setUpdating(true);
     setUpdateError('');
     setNotice('');
     try {
       const updated = await updateStatus(id, next);
+      updatedFocus.current = restoreFocus ? id : null;
       setNotice(`Updated ${updated.id} to ${updated.status}.`);
       setRefresh((value) => value + 1);
     } catch (cause) {
@@ -53,7 +67,7 @@ export function App() {
       </header>
       <section aria-label="Order filters" className="filters">
         <label>Search orders
-          <input type="search" value={search} placeholder="Order ID or customer name" onChange={(event) => { setSearch(event.target.value); }} />
+          <input ref={searchInput} type="search" value={search} placeholder="Order ID or customer name" onChange={(event) => { setSearch(event.target.value); }} />
         </label>
         <label>Status filter
           <select value={status} onChange={(event) => { setStatus(event.target.value); }}>

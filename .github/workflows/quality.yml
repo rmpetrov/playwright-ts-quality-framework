@@ -24,7 +24,8 @@ jobs:
       - run: npm run build
       - run: npm run test:regression
       - run: npx playwright install --with-deps chromium firefox webkit
-      - run: npm test
+      - name: API, cross-browser UI, and accessibility quality gates
+        run: npm test
       - name: Upload test evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
