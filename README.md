@@ -20,6 +20,14 @@ this is a portfolio artifact with no production-use or professional-experience c
 - **Reviewable diagnostics:** HTML reports, failure traces/screenshots, axe findings,
   and checked namespace-cleanup attachments accompany the CI quality gate.
 
+## Agentic QA Pilot
+
+Approved independent requirements drive Planner → Generator → Human Review →
+Execution, with human approval between stages. The separately configured pilot
+verified **1 Chromium test passed**, zero retries, and namespace cleanup
+(`deleted: true`). This is a controlled proof of concept, not a production-ready
+framework. See the [pilot workflow, evidence, and limitations](docs/agentic-qa.md).
+
 ## Architecture at a glance
 
 Browser tests drive React served by Vite; browser `/api` requests reach Fastify

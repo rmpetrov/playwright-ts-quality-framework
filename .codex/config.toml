@@ -1,0 +1,8 @@
+# Enabled after human approval for the completed Agentic QA pilot.
+# Shared Planner/Generator tools; stage approval gates remain in AGENTS.md.
+[mcp_servers.playwright-test]
+command = "npx"
+args = ["--no-install", "playwright", "run-test-mcp-server", "--config", "playwright.agentic.config.ts", "--headless"]
+enabled = true
+default_tools_approval_mode = "prompt"
+enabled_tools = ["planner_setup_page", "planner_save_plan", "browser_snapshot", "browser_click", "browser_select_option", "browser_type", "browser_wait_for", "browser_close", "generator_setup_page", "generator_read_log", "generator_write_test"]
