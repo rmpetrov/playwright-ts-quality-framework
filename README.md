@@ -28,6 +28,11 @@ verified **1 Chromium test passed**, zero retries, and namespace cleanup
 (`deleted: true`). This is a controlled proof of concept, not a production-ready
 framework. See the [pilot workflow, evidence, and limitations](docs/agentic-qa.md).
 
+In the completed [Controlled Defect Detection experiment](docs/agentic-qa-defect-detection.md),
+the AI-generated test detected a controlled search regression. AI-assisted
+investigation identified the faulty implementation, and the original behavior
+was restored without changing test assertions.
+
 ## Architecture at a glance
 
 Browser tests drive React served by Vite; browser `/api` requests reach Fastify
