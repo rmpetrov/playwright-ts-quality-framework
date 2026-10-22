@@ -244,3 +244,12 @@ behavior, implement the lifecycle fix, commit, or push.
 These static checks and discovery runs are separate from the previously recorded
 Stage D browser execution. No additional browser test or application build was
 executed during this final preparation.
+
+## Phase 2 follow-up — Controlled Defect Detection
+
+The completed [Phase 2 case study](agentic-qa-defect-detection.md) records a
+baseline → mutation → recovery experiment. The existing AI-generated test detected
+a controlled search regression, AI-assisted investigation identified the faulty
+implementation, and recovery restored the original behavior with unchanged test
+assertions. The report includes verified results, cleanup evidence, reproduction
+instructions, and the investigation's independence limitation.
