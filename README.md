@@ -33,6 +33,10 @@ the AI-generated test detected a controlled search regression. AI-assisted
 investigation identified the faulty implementation, and the original behavior
 was restored without changing test assertions.
 
+A separate [AI failure-analysis case study](docs/ai-failure-analysis/public-case-study.md)
+uses synthetic evidence, structured outputs, offline scoring, and human review.
+It documents a controlled, non-blind experiment; the underlying benchmark is private.
+
 ## Architecture at a glance
 
 Browser tests drive React served by Vite; browser `/api` requests reach Fastify
